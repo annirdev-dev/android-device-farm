@@ -1,27 +1,14 @@
 # Render Blueprint for the backend (frontend deploys separately to Vercel).
 # Postgres + Redis are NOT defined here - they already run on Railway
-# (docs/SETUP.md / this deployment's notes); this Blueprint only provisions
-# the application services and points them at those databases via the
-# "shared" env var group, filled in once during Blueprint setup.
+# (see docs/SETUP.md and this deployment's notes); this Blueprint only
+# provisions the application services and points them at those databases.
+# DATABASE_URL / JWT_SECRET / REDIS_URL / S3 credentials are sync:false
+# (never committed) and filled in once during Blueprint setup.
 #
 # object-storage (MinIO), API_PUBLIC_URL, STREAMING_GATEWAY_PUBLIC_URL, and
 # WEB_PUBLIC_URL are placeholders below - Render assigns each service's real
 # *.onrender.com hostname only after first deploy, so these get patched to
 # their real values in a follow-up update once that's known.
-envVarGroups:
-  - name: shared
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: JWT_SECRET
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: S3_ACCESS_KEY_ID
-        sync: false
-      - key: S3_SECRET_ACCESS_KEY
-        sync: false
-
 services:
   - type: web
     name: object-storage
@@ -48,9 +35,17 @@ services:
     dockerfilePath: ./infrastructure/docker/api.Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    envVarGroups:
-      - shared
     envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
       - key: PORT
         value: "4000"
       - key: API_PORT
@@ -79,9 +74,17 @@ services:
     region: oregon
     dockerfilePath: ./infrastructure/docker/device-orchestrator.Dockerfile
     dockerContext: .
-    envVarGroups:
-      - shared
     envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
       - key: PORT
         value: "9464"
       - key: NODE_ENV
@@ -103,9 +106,11 @@ services:
     dockerfilePath: ./infrastructure/docker/streaming-gateway.Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    envVarGroups:
-      - shared
     envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
       - key: PORT
         value: "4100"
       - key: STREAMING_GATEWAY_PORT
@@ -121,9 +126,11 @@ services:
     dockerfilePath: ./infrastructure/docker/emulator-worker.Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    envVarGroups:
-      - shared
     envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
       - key: PORT
         value: "4200"
       - key: EMULATOR_WORKER_PORT
