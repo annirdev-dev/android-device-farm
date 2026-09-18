@@ -1,0 +1,28 @@
+{
+  "name": "@devicefarm/emulator-worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@devicefarm/config": "workspace:*",
+    "@devicefarm/device-types": "workspace:*",
+    "@devicefarm/shared": "workspace:*",
+    "fastify": "^4.28.1",
+    "@fastify/websocket": "^10.0.1",
+    "ws": "^8.18.0",
+    "pino": "^9.4.0",
+    "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}

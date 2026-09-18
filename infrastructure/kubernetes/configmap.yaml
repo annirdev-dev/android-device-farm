@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devicefarm-config
+  namespace: devicefarm
+data:
+  NODE_ENV: "production"
+  API_PUBLIC_URL: "https://api.devicefarm.example.com"
+  WEB_PUBLIC_URL: "https://app.devicefarm.example.com"
+  STREAMING_GATEWAY_PUBLIC_URL: "wss://stream.devicefarm.example.com"
+  EMULATOR_PROVIDER: "real"
+  COMPUTE_PROVIDER: "kubernetes"
+  ANDROID_SDK_ROOT: "/opt/android-sdk"
+  EMULATOR_DATA_ROOT: "/var/lib/devicefarm/emulators"
+  S3_BUCKET_APPS: "devicefarm-apps"
+  S3_BUCKET_SCREENSHOTS: "devicefarm-screenshots"
+  S3_BUCKET_RECORDINGS: "devicefarm-recordings"
+---
+# Real secrets (DATABASE_URL, JWT_SECRET, S3 credentials, STRIPE_SECRET_KEY)
+# belong in a Secret created out-of-band (kubectl create secret, or your
+# secrets manager's CSI driver) - never committed here.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devicefarm-secrets
+  namespace: devicefarm
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://REPLACE_ME"
+  REDIS_URL: "redis://redis:6379"
+  JWT_SECRET: "REPLACE_ME"
+  S3_ACCESS_KEY_ID: "REPLACE_ME"
+  S3_SECRET_ACCESS_KEY: "REPLACE_ME"

@@ -1,0 +1,44 @@
+{
+  "title": "Device Farm Overview",
+  "uid": "devicefarm-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active sessions",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "targets": [{ "expr": "devicefarm_active_sessions" }]
+    },
+    {
+      "type": "stat",
+      "title": "Failed sessions (24h)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 6 },
+      "targets": [{ "expr": "devicefarm_failed_sessions_24h" }]
+    },
+    {
+      "type": "graph",
+      "title": "Session start duration (p50/p95)",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(devicefarm_session_start_duration_seconds_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(devicefarm_session_start_duration_seconds_bucket[5m]))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Emulator boot duration (p50/p95)",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(devicefarm_emulator_boot_duration_seconds_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(devicefarm_emulator_boot_duration_seconds_bucket[5m]))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Compute host utilization",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "targets": [{ "expr": "devicefarm_compute_host_utilization_percent", "legendFormat": "{{host}} - {{resource}}" }]
+    }
+  ]
+}

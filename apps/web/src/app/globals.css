@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 222 47% 6%;
+  --foreground: 210 20% 92%;
+  --card: 222 40% 9%;
+  --card-foreground: 210 20% 92%;
+  --border: 217 25% 18%;
+  --input: 217 25% 18%;
+  --ring: 199 89% 55%;
+  --muted: 217 25% 14%;
+  --muted-foreground: 215 16% 60%;
+  --primary: 199 89% 55%;
+  --primary-foreground: 222 47% 6%;
+  --secondary: 217 25% 16%;
+  --secondary-foreground: 210 20% 92%;
+  --destructive: 0 72% 55%;
+  --destructive-foreground: 210 20% 98%;
+  --success: 152 60% 42%;
+  --success-foreground: 210 20% 98%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 26 40% 10%;
+  --accent: 217 25% 16%;
+  --accent-foreground: 210 20% 92%;
+  --radius: 0.625rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 999px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}

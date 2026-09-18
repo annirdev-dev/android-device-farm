@@ -1,0 +1,626 @@
+// Android Device Farm - core PostgreSQL schema
+// Every table uses a UUID primary key, created_at/updated_at timestamps,
+// and soft-deletion (deleted_at) where records must be reversibly removed.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  BILLING
+}
+
+enum Plan {
+  FREE
+  PRO
+  BUSINESS
+  ENTERPRISE
+}
+
+enum AppPlatform {
+  ANDROID
+  IOS // reserved for future support
+}
+
+enum AppFileType {
+  APK
+  AAB // reserved
+  IPA // reserved
+}
+
+enum AppVersionStatus {
+  UPLOADED
+  SCANNING
+  PROCESSING
+  READY
+  FAILED
+  REJECTED
+}
+
+enum DeviceArchitecture {
+  X86_64
+  ARM64
+}
+
+enum FormFactor {
+  PHONE
+  TABLET
+}
+
+enum DeviceStatus {
+  AVAILABLE
+  STARTING
+  RUNNING
+  BUSY
+  OFFLINE
+  MAINTENANCE
+}
+
+enum ComputeProviderType {
+  LOCAL
+  DOCKER
+  KUBERNETES
+  CLOUD
+}
+
+enum ComputeHostStatus {
+  HEALTHY
+  DEGRADED
+  OFFLINE
+  MAINTENANCE
+}
+
+enum EmulatorProviderKind {
+  REAL_ANDROID_EMULATOR
+  MOCK
+}
+
+enum EmulatorInstanceStatus {
+  PROVISIONING
+  BOOTING
+  READY
+  BUSY
+  RESETTING
+  STOPPING
+  STOPPED
+  FAILED
+  DESTROYED
+}
+
+enum SessionStatus {
+  CREATING
+  BOOTING
+  INSTALLING
+  STARTING
+  RUNNING
+  STOPPING
+  STOPPED
+  FAILED
+}
+
+enum SessionEventType {
+  STATE_CHANGE
+  PROGRESS
+  LOG
+  INPUT
+  ERROR
+  SYSTEM
+}
+
+enum LogSource {
+  LOGCAT
+  APPLICATION
+  EMULATOR
+  SYSTEM
+  NETWORK
+  CRASH
+}
+
+enum LogLevel {
+  VERBOSE
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
+}
+
+enum RecordingStatus {
+  RECORDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum UsageMetricType {
+  DEVICE_MINUTES
+  CONCURRENT_DEVICES
+  STORAGE_GB
+  RECORDINGS
+  SESSIONS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String    @unique
+  passwordHash     String?   @map("password_hash")
+  name             String?
+  avatarUrl        String?   @map("avatar_url")
+  googleId         String?   @unique @map("google_id")
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  isPlatformAdmin  Boolean   @default(false) @map("is_platform_admin")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  memberships       OrganizationMember[]
+  uploadedVersions  AppVersion[]
+  sessions          Session[]
+  passwordResets    PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+  auditLogs         AuditLog[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model Organization {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  slug      String    @unique
+  plan      Plan      @default(FREE)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  members      OrganizationMember[]
+  projects     Project[]
+  sessions     Session[]
+  usageRecords Usage[]
+  subscription Subscription?
+  auditLogs    AuditLog[]
+  computeHosts ComputeHost[]
+
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  role           OrgRole  @default(MEMBER)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model Project {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  description    String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  apps         App[]
+  sessions     Session[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, deletedAt])
+  @@map("projects")
+}
+
+// ---------------------------------------------------------------------------
+// Applications under test
+// ---------------------------------------------------------------------------
+
+model App {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String      @map("project_id") @db.Uuid
+  platform    AppPlatform @default(ANDROID)
+  name        String
+  packageName String      @map("package_name")
+  iconStorageKey String?  @map("icon_storage_key")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  deletedAt   DateTime?   @map("deleted_at")
+
+  project  Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions AppVersion[]
+  sessions Session[]
+
+  @@unique([projectId, platform, packageName])
+  @@index([projectId, deletedAt])
+  @@map("apps")
+}
+
+model AppVersion {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appId            String            @map("app_id") @db.Uuid
+  uploadedByUserId String?           @map("uploaded_by_user_id") @db.Uuid
+  fileType         AppFileType       @default(APK) @map("file_type")
+  storageKey       String            @map("storage_key")
+  fileName         String            @map("file_name")
+  fileSizeBytes    BigInt            @map("file_size_bytes")
+  checksumSha256   String            @map("checksum_sha256")
+  versionName      String?           @map("version_name")
+  versionCode      Int?              @map("version_code")
+  minSdkVersion    Int?              @map("min_sdk_version")
+  targetSdkVersion Int?              @map("target_sdk_version")
+  iconStorageKey   String?           @map("icon_storage_key")
+  status           AppVersionStatus  @default(UPLOADED)
+  statusMessage    String?           @map("status_message")
+  scanResult       Json?             @map("scan_result")
+  metadata         Json?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  app          App           @relation(fields: [appId], references: [id], onDelete: Cascade)
+  uploadedBy   User?         @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  sessions     Session[]
+
+  @@index([appId, createdAt])
+  @@index([status])
+  @@map("app_versions")
+}
+
+// ---------------------------------------------------------------------------
+// Device catalog
+// ---------------------------------------------------------------------------
+
+model DeviceProfile {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  manufacturer     String             @default("Google")
+  androidVersion   String             @map("android_version")
+  apiLevel         Int                @map("api_level")
+  resolutionWidth  Int                @map("resolution_width")
+  resolutionHeight Int                @map("resolution_height")
+  densityDpi       Int                @map("density_dpi")
+  cpuCores         Int                @map("cpu_cores")
+  ramMb            Int                @map("ram_mb")
+  storageMb        Int                @map("storage_mb")
+  architecture     DeviceArchitecture @default(X86_64)
+  formFactor       FormFactor         @default(PHONE)
+  emulatorImage    String             @map("emulator_image")
+  isEnabled        Boolean            @default(true) @map("is_enabled")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  devices           Device[]
+  emulatorInstances EmulatorInstance[]
+  sessions          Session[]
+
+  @@index([androidVersion])
+  @@index([apiLevel])
+  @@index([isEnabled])
+  @@map("device_profiles")
+}
+
+// A bookable device "slot": a scheduling unit the Device Lab UI shows with a
+// live status. Distinct from EmulatorInstance, which is the ephemeral running
+// process created for a specific session.
+model Device {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceProfileId String       @map("device_profile_id") @db.Uuid
+  computeHostId   String?      @map("compute_host_id") @db.Uuid
+  label           String
+  status          DeviceStatus @default(OFFLINE)
+  lastHeartbeatAt DateTime?    @map("last_heartbeat_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  deviceProfile     DeviceProfile      @relation(fields: [deviceProfileId], references: [id], onDelete: Cascade)
+  computeHost       ComputeHost?       @relation(fields: [computeHostId], references: [id], onDelete: SetNull)
+  emulatorInstances EmulatorInstance[]
+
+  @@index([deviceProfileId, status])
+  @@index([computeHostId])
+  @@map("devices")
+}
+
+// ---------------------------------------------------------------------------
+// Compute infrastructure
+// ---------------------------------------------------------------------------
+
+model ComputeHost {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String?             @map("organization_id") @db.Uuid
+  name                  String
+  providerType          ComputeProviderType @map("provider_type")
+  hostname              String
+  region                String              @default("local")
+  cpuCapacityMillicores Int                 @map("cpu_capacity_millicores")
+  ramCapacityMb         Int                 @map("ram_capacity_mb")
+  diskCapacityMb        Int                 @map("disk_capacity_mb")
+  gpuAvailable          Boolean             @default(false) @map("gpu_available")
+  kvmEnabled            Boolean             @default(false) @map("kvm_enabled")
+  maxConcurrentEmulators Int                @default(4) @map("max_concurrent_emulators")
+  cpuUsagePercent       Float               @default(0) @map("cpu_usage_percent")
+  ramUsagePercent       Float               @default(0) @map("ram_usage_percent")
+  diskUsagePercent      Float               @default(0) @map("disk_usage_percent")
+  status                ComputeHostStatus   @default(OFFLINE)
+  lastHeartbeatAt       DateTime?           @map("last_heartbeat_at")
+  metadata              Json?
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  organization      Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  devices           Device[]
+  emulatorInstances EmulatorInstance[]
+
+  @@index([status])
+  @@index([providerType])
+  @@map("compute_hosts")
+}
+
+model EmulatorInstance {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  computeHostId   String                 @map("compute_host_id") @db.Uuid
+  deviceProfileId String                 @map("device_profile_id") @db.Uuid
+  deviceId        String?                @map("device_id") @db.Uuid
+  provider        EmulatorProviderKind   @default(MOCK)
+  avdName         String                 @map("avd_name")
+  dataDir         String                 @map("data_dir")
+  consolePort     Int?                   @map("console_port")
+  adbSerial       String?                @map("adb_serial")
+  status          EmulatorInstanceStatus @default(PROVISIONING)
+  cpuLimitCores   Int                    @map("cpu_limit_cores")
+  ramLimitMb      Int                    @map("ram_limit_mb")
+  diskLimitMb     Int                    @map("disk_limit_mb")
+  bootStartedAt   DateTime?              @map("boot_started_at")
+  bootCompletedAt DateTime?              @map("boot_completed_at")
+  lastHealthCheckAt DateTime?            @map("last_health_check_at")
+  crashCount      Int                    @default(0) @map("crash_count")
+  lastError       String?                @map("last_error")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  destroyedAt     DateTime?              @map("destroyed_at")
+
+  computeHost   ComputeHost    @relation(fields: [computeHostId], references: [id], onDelete: Cascade)
+  deviceProfile DeviceProfile  @relation(fields: [deviceProfileId], references: [id], onDelete: Restrict)
+  device        Device?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  session       Session?
+
+  @@index([computeHostId, status])
+  @@index([status])
+  @@map("emulator_instances")
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+model Session {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String        @map("user_id") @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  projectId          String        @map("project_id") @db.Uuid
+  appId              String        @map("app_id") @db.Uuid
+  appVersionId       String        @map("app_version_id") @db.Uuid
+  deviceProfileId    String        @map("device_profile_id") @db.Uuid
+  emulatorInstanceId String?       @unique @map("emulator_instance_id") @db.Uuid
+  status             SessionStatus @default(CREATING)
+  statusMessage      String?       @map("status_message")
+  errorMessage       String?       @map("error_message")
+  streamingToken     String?       @unique @map("streaming_token")
+  startedAt          DateTime?     @map("started_at")
+  endedAt            DateTime?     @map("ended_at")
+  durationSeconds    Int?          @map("duration_seconds")
+  lastActivityAt     DateTime      @default(now()) @map("last_activity_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  app              App               @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appVersion       AppVersion        @relation(fields: [appVersionId], references: [id], onDelete: Restrict)
+  deviceProfile    DeviceProfile     @relation(fields: [deviceProfileId], references: [id], onDelete: Restrict)
+  emulatorInstance EmulatorInstance? @relation(fields: [emulatorInstanceId], references: [id], onDelete: SetNull)
+
+  events      SessionEvent[]
+  logs        Log[]
+  screenshots Screenshot[]
+  recordings  Recording[]
+  usageRecords Usage[]
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([lastActivityAt])
+  @@map("sessions")
+}
+
+model SessionEvent {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String           @map("session_id") @db.Uuid
+  type      SessionEventType
+  message   String?
+  payload   Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("session_events")
+}
+
+model Log {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String    @map("session_id") @db.Uuid
+  source    LogSource
+  level     LogLevel  @default(INFO)
+  tag       String?
+  message   String
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([sessionId, source])
+  @@index([sessionId, level])
+  @@map("logs")
+}
+
+model Screenshot {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  storageKey    String   @map("storage_key")
+  width         Int
+  height        Int
+  fileSizeBytes Int      @map("file_size_bytes")
+  takenAt       DateTime @default(now()) @map("taken_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("screenshots")
+}
+
+model Recording {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId       String          @map("session_id") @db.Uuid
+  storageKey      String?         @map("storage_key")
+  status          RecordingStatus @default(RECORDING)
+  durationSeconds Int?            @map("duration_seconds")
+  fileSizeBytes   BigInt?         @map("file_size_bytes")
+  startedAt       DateTime        @default(now()) @map("started_at")
+  endedAt         DateTime?       @map("ended_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("recordings")
+}
+
+// ---------------------------------------------------------------------------
+// Billing & usage
+// ---------------------------------------------------------------------------
+
+model Usage {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  sessionId      String?         @map("session_id") @db.Uuid
+  metricType     UsageMetricType @map("metric_type")
+  quantity       Decimal         @db.Decimal(18, 4)
+  periodStart    DateTime        @map("period_start")
+  periodEnd      DateTime        @map("period_end")
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  session      Session?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, metricType, periodStart])
+  @@map("usage")
+}
+
+model Subscription {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String             @unique @map("organization_id") @db.Uuid
+  plan                 Plan               @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?            @map("stripe_customer_id")
+  stripeSubscriptionId String?            @map("stripe_subscription_id")
+  deviceMinutesLimit   Int                @map("device_minutes_limit")
+  deviceMinutesUsed    Int                @default(0) @map("device_minutes_used")
+  currentPeriodStart   DateTime           @default(now()) @map("current_period_start")
+  currentPeriodEnd     DateTime           @map("current_period_end")
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  actorUserId    String?   @map("actor_user_id") @db.Uuid
+  action         String
+  targetType     String?   @map("target_type")
+  targetId       String?   @map("target_id")
+  metadata       Json?
+  ipAddress      String?   @map("ip_address")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actor        User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}

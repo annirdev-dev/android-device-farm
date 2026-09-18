@@ -1,0 +1,36 @@
+# One worker Pod per compute host (StatefulSet, not Deployment, so each
+# instance keeps a stable identity/hostPath for its emulator data root
+# across restarts). Only schedules onto nodes labeled for KVM access.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: emulator-worker
+  namespace: devicefarm
+spec:
+  serviceName: emulator-worker
+  replicas: 1 # scale by adding more compute_hosts rows + matching replicas, not by naively bumping this
+  selector: { matchLabels: { app: emulator-worker } }
+  template:
+    metadata: { labels: { app: emulator-worker } }
+    spec:
+      nodeSelector:
+        devicefarm.io/kvm: "true"
+      containers:
+        - name: emulator-worker
+          image: ghcr.io/your-org/devicefarm-emulator-worker:latest
+          ports: [{ containerPort: 4200 }]
+          securityContext:
+            privileged: true # TODO: replace with a /dev/kvm device-plugin resource request once one is deployed
+          envFrom:
+            - configMapRef: { name: devicefarm-config }
+          volumeMounts:
+            - { name: kvm, mountPath: /dev/kvm }
+            - { name: emulator-data, mountPath: /var/lib/devicefarm/emulators }
+      volumes:
+        - name: kvm
+          hostPath: { path: /dev/kvm }
+  volumeClaimTemplates:
+    - metadata: { name: emulator-data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 100Gi } }

@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: devicefarm-api
+    static_configs:
+      - targets: ["api:4000"]
+    metrics_path: /metrics
+
+  - job_name: devicefarm-device-orchestrator
+    static_configs:
+      - targets: ["device-orchestrator:9464"]
+    metrics_path: /metrics

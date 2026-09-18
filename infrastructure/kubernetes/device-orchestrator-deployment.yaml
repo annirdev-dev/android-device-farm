@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: device-orchestrator
+  namespace: devicefarm
+spec:
+  replicas: 2 # BullMQ workers - safe to run several, jobs are claimed exactly once
+  selector: { matchLabels: { app: device-orchestrator } }
+  template:
+    metadata: { labels: { app: device-orchestrator } }
+    spec:
+      containers:
+        - name: device-orchestrator
+          image: ghcr.io/your-org/devicefarm-device-orchestrator:latest
+          envFrom:
+            - configMapRef: { name: devicefarm-config }
+            - secretRef: { name: devicefarm-secrets }

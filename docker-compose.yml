@@ -1,0 +1,142 @@
+version: "3.9"
+
+# Local development stack. The emulator-worker service here runs
+# EMULATOR_PROVIDER=mock by default (no KVM required) so the whole platform
+# is clickable end-to-end on any laptop. To exercise the real Android
+# Emulator, run emulator-worker directly on a Linux host with KVM instead of
+# in this compose file - see docs/EMULATOR_HOST_SETUP.md - and register it as
+# a compute host pointing at that host's address.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devicefarm
+      POSTGRES_PASSWORD: devicefarm
+      POSTGRES_DB: devicefarm
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devicefarm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  object-storage:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: devicefarm
+      MINIO_ROOT_PASSWORD: devicefarm-secret
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
+    volumes: ["minio-data:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://devicefarm:devicefarm@postgres:5432/devicefarm
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://object-storage:9000
+    ports: ["4000:4000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      object-storage: { condition: service_healthy }
+
+  device-orchestrator:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/device-orchestrator.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://devicefarm:devicefarm@postgres:5432/devicefarm
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://object-storage:9000
+    ports: ["9464:9464"] # Prometheus metrics
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  emulator-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/emulator-worker.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      EMULATOR_PROVIDER: mock
+    ports: ["4200:4200"]
+    # A real deployment on a Linux+KVM host instead adds:
+    #   devices: ["/dev/kvm:/dev/kvm"]
+    #   privileged: true
+    #   environment: { EMULATOR_PROVIDER: real }
+
+  streaming-gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/streaming-gateway.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://devicefarm:devicefarm@postgres:5432/devicefarm
+    ports: ["4100:4100"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_STREAMING_GATEWAY_URL: ws://localhost:4100
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: devicefarm
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+
+volumes:
+  postgres-data:
+  minio-data:
+  grafana-data:

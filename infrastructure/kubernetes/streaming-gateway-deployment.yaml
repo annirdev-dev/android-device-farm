@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streaming-gateway
+  namespace: devicefarm
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: streaming-gateway } }
+  template:
+    metadata: { labels: { app: streaming-gateway } }
+    spec:
+      containers:
+        - name: streaming-gateway
+          image: ghcr.io/your-org/devicefarm-streaming-gateway:latest
+          ports: [{ containerPort: 4100 }]
+          envFrom:
+            - configMapRef: { name: devicefarm-config }
+            - secretRef: { name: devicefarm-secrets }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streaming-gateway
+  namespace: devicefarm
+spec:
+  selector: { app: streaming-gateway }
+  ports: [{ port: 80, targetPort: 4100 }]
