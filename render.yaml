@@ -1,0 +1,134 @@
+# Render Blueprint for the backend (frontend deploys separately to Vercel).
+# Postgres + Redis are NOT defined here - they already run on Railway
+# (docs/SETUP.md / this deployment's notes); this Blueprint only provisions
+# the application services and points them at those databases via the
+# "shared" env var group, filled in once during Blueprint setup.
+#
+# object-storage (MinIO), API_PUBLIC_URL, STREAMING_GATEWAY_PUBLIC_URL, and
+# WEB_PUBLIC_URL are placeholders below - Render assigns each service's real
+# *.onrender.com hostname only after first deploy, so these get patched to
+# their real values in a follow-up update once that's known.
+envVarGroups:
+  - name: shared
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+
+services:
+  - type: web
+    name: object-storage
+    runtime: image
+    plan: free
+    region: oregon
+    image:
+      url: docker.io/minio/minio:latest
+    dockerCommand: server /data --console-address :9001
+    healthCheckPath: /minio/health/live
+    envVars:
+      - key: PORT
+        value: "9000"
+      - key: MINIO_ROOT_USER
+        sync: false
+      - key: MINIO_ROOT_PASSWORD
+        sync: false
+
+  - type: web
+    name: api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./infrastructure/docker/api.Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVarGroups:
+      - shared
+    envVars:
+      - key: PORT
+        value: "4000"
+      - key: API_PORT
+        value: "4000"
+      - key: NODE_ENV
+        value: production
+      - key: EMULATOR_PROVIDER
+        value: mock
+      - key: COMPUTE_PROVIDER
+        value: local
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: S3_ENDPOINT
+        value: "https://placeholder-object-storage.onrender.com"
+      - key: WEB_PUBLIC_URL
+        value: "https://placeholder.vercel.app"
+      - key: API_PUBLIC_URL
+        value: "https://placeholder-api.onrender.com"
+      - key: STREAMING_GATEWAY_PUBLIC_URL
+        value: "wss://placeholder-streaming-gateway.onrender.com"
+
+  - type: web
+    name: device-orchestrator
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./infrastructure/docker/device-orchestrator.Dockerfile
+    dockerContext: .
+    envVarGroups:
+      - shared
+    envVars:
+      - key: PORT
+        value: "9464"
+      - key: NODE_ENV
+        value: production
+      - key: EMULATOR_PROVIDER
+        value: mock
+      - key: COMPUTE_PROVIDER
+        value: local
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: S3_ENDPOINT
+        value: "https://placeholder-object-storage.onrender.com"
+
+  - type: web
+    name: streaming-gateway
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./infrastructure/docker/streaming-gateway.Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVarGroups:
+      - shared
+    envVars:
+      - key: PORT
+        value: "4100"
+      - key: STREAMING_GATEWAY_PORT
+        value: "4100"
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: emulator-worker
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./infrastructure/docker/emulator-worker.Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVarGroups:
+      - shared
+    envVars:
+      - key: PORT
+        value: "4200"
+      - key: EMULATOR_WORKER_PORT
+        value: "4200"
+      - key: NODE_ENV
+        value: production
+      - key: EMULATOR_PROVIDER
+        value: mock
