@@ -26,3 +26,10 @@ var/emulators/
 
 # Object storage local dev volume
 infrastructure/docker/data/
+
+# Railway IaC authoring file - contains generated secrets inline (JWT
+# secret, MinIO credentials); kept local-only, never pushed. Only
+# .railway/README.md (Railway's own generated doc, no secrets) is tracked.
+.railway/railway.ts
+.railway/railway.py
+.railway/railway.go
