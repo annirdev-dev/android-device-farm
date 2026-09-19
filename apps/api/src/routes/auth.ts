@@ -11,10 +11,17 @@ function slugify(input: string): string {
 }
 
 function setSessionCookie(reply: import("fastify").FastifyReply, token: string) {
+  const isProduction = process.env.NODE_ENV === "production";
   reply.setCookie("token", token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // "lax" works when the frontend and API share a registrable domain
+    // (e.g. app.example.com + api.example.com). This deployment splits them
+    // across totally different domains (vercel.app vs onrender.com), which
+    // is a cross-site context - Lax cookies are never sent on cross-site
+    // fetch(), only top-level navigation. "none" (requires Secure/HTTPS) is
+    // the correct policy for that split-domain topology.
+    sameSite: isProduction ? "none" : "lax",
+    secure: isProduction,
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
