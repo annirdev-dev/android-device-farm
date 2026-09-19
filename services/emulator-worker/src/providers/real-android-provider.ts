@@ -101,8 +101,13 @@ export class RealAndroidEmulatorProvider implements EmulatorProvider {
       "-no-window",
       "-no-audio",
       "-no-boot-anim",
+      // "auto" picks real hardware acceleration when the host provides it
+      // (KVM+GPU on Linux, Hypervisor.framework on macOS) and falls back to
+      // swiftshader software rendering otherwise. Forcing swiftshader_indirect
+      // unconditionally caused a real IMapper/HAL graphics fault in testing on
+      // Apple Silicon - "auto" is also Android's own documented default.
       "-gpu",
-      "swiftshader_indirect",
+      "auto",
       "-no-snapshot-save",
       "-read-only",
       "-memory",
