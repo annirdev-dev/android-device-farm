@@ -135,7 +135,13 @@ services:
         value: "4200"
       - key: EMULATOR_WORKER_PORT
         value: "4200"
+      # NODE_ENV is deliberately NOT "production" here: the worker hard-refuses
+      # to boot with EMULATOR_PROVIDER=mock when NODE_ENV=production (see
+      # services/emulator-worker/src/providers/index.ts) as a safety rail
+      # against mock hardware accidentally standing in for a real device farm.
+      # This Render deployment is an intentional mock demo, so it stays
+      # "development" here - every other service keeps NODE_ENV=production.
       - key: NODE_ENV
-        value: production
+        value: development
       - key: EMULATOR_PROVIDER
         value: mock
