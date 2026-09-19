@@ -9,7 +9,7 @@ import {
   touchInputSchema,
 } from "@devicefarm/shared";
 
-const FRAME_INTERVAL_MS = 150; // ~6-7 fps; a real WebRTC/H.264 gateway replaces this poll loop later.
+const FRAME_INTERVAL_MS = 150; // ~6-7 fps target; a real WebRTC/H.264 gateway replaces this poll loop later.
 
 /**
  * Per-instance duplex channel: server pushes JPEG/SVG frames as binary
@@ -28,15 +28,30 @@ export async function streamRoutes(app: FastifyInstance) {
     }
 
     let closed = false;
-    const frameTimer = setInterval(async () => {
+    let frameTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Self-scheduling loop (not setInterval): waits for each captureFrame()
+    // to resolve before scheduling the next one. A real device's screencap
+    // can easily take longer than FRAME_INTERVAL_MS (especially at high
+    // resolution over a real adb transport) - setInterval would then fire
+    // overlapping captures that pile up on the same adb connection and
+    // eventually time out, which is exactly what happened in testing.
+    const scheduleNextFrame = () => {
+      if (closed) return;
+      frameTimer = setTimeout(captureAndSend, FRAME_INTERVAL_MS);
+    };
+    const captureAndSend = async () => {
       if (closed || socket.readyState !== socket.OPEN) return;
       try {
         const frame = await instanceManager.captureFrame(id);
-        socket.send(frame);
+        if (!closed && socket.readyState === socket.OPEN) socket.send(frame);
       } catch {
         // Transient capture failures are expected during boot/reset; skip the frame.
+      } finally {
+        scheduleNextFrame();
       }
-    }, FRAME_INTERVAL_MS);
+    };
+    scheduleNextFrame();
 
     socket.on("message", async (raw: Buffer) => {
       try {
@@ -66,7 +81,7 @@ export async function streamRoutes(app: FastifyInstance) {
 
     socket.on("close", () => {
       closed = true;
-      clearInterval(frameTimer);
+      if (frameTimer) clearTimeout(frameTimer);
     });
   });
 
