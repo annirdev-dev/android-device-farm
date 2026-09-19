@@ -4,11 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MonitorPlay, Play } from "lucide-react";
+import { MonitorPlay, Play, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
+import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/status-badge";
@@ -22,6 +23,7 @@ export default function SessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = React.useState<Paginated<Session> | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<string | null>(null);
 
   const load = React.useCallback(() => {
     api.get<Paginated<Session>>("/api/sessions?pageSize=50").then(setSessions);
@@ -32,6 +34,18 @@ export default function SessionsPage() {
     const interval = setInterval(load, 8000);
     return () => clearInterval(interval);
   }, [load]);
+
+  async function deleteSession() {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/api/sessions/${deleteTarget}`);
+      toast.success("Session deleted");
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to delete session");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -76,6 +90,19 @@ export default function SessionsPage() {
                     <span>{s.user?.name ?? s.user?.email}</span>
                     <span>{relativeTime(s.createdAt)}</span>
                     <span>{formatDuration(s.durationSeconds)}</span>
+                    {(s.status === "STOPPED" || s.status === "FAILED") && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteTarget(s.id);
+                        }}
+                        title="Delete session"
+                        className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -90,6 +117,8 @@ export default function SessionsPage() {
         organizationId={currentOrg?.id}
         onStarted={(id) => router.push(`/sessions/${id}`)}
       />
+
+      <DeleteSessionDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)} onConfirm={deleteSession} />
     </div>
   );
 }

@@ -14,9 +14,11 @@ import {
   RefreshCw,
   ChevronLeft,
   LayoutGrid,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
+import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import { api, ApiError } from "@/lib/api-client";
 import { formatDuration } from "@/lib/utils";
 import type { Session } from "@/lib/types";
@@ -29,6 +31,7 @@ export default function SessionDetailPage() {
   const router = useRouter();
   const [session, setSession] = React.useState<Session | null>(null);
   const [recording, setRecording] = React.useState<{ id: string } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const dragStart = React.useRef<{ x: number; y: number } | null>(null);
   const imgRef = React.useRef<HTMLImageElement>(null);
 
@@ -38,8 +41,12 @@ export default function SessionDetailPage() {
 
   React.useEffect(loadSession, [loadSession]);
   React.useEffect(() => {
-    if (!session || session.status === "RUNNING" || session.status === "STOPPED" || session.status === "FAILED") return;
-    const interval = setInterval(loadSession, 2000);
+    if (!session || session.status === "STOPPED" || session.status === "FAILED") return;
+    // Poll faster while a session is still coming up (progress events cover
+    // most of that), and slower once RUNNING - just enough to notice if the
+    // session ends server-side (e.g. reaped as abandoned, or crashed) so the
+    // UI doesn't sit forever showing a dead "Connecting to device stream...".
+    const interval = setInterval(loadSession, session.status === "RUNNING" ? 10000 : 2000);
     return () => clearInterval(interval);
   }, [session, loadSession]);
 
@@ -136,6 +143,16 @@ export default function SessionDetailPage() {
     }
   }
 
+  async function deleteSession() {
+    try {
+      await api.delete(`/api/sessions/${sessionId}`);
+      toast.success("Session deleted");
+      router.push("/sessions");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to delete session");
+    }
+  }
+
   if (!session) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading session...</div>;
   }
@@ -158,11 +175,27 @@ export default function SessionDetailPage() {
           <InfoRow label="Started" value={session.startedAt ? new Date(session.startedAt).toLocaleTimeString() : "-"} />
           <InfoRow label="Duration" value={formatDuration(session.durationSeconds)} />
         </div>
+
+        {(session.status === "STOPPED" || session.status === "FAILED") && (
+          <Button variant="destructive" size="sm" className="mt-6" onClick={() => setDeleteDialogOpen(true)}>
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete Session
+          </Button>
+        )}
       </div>
 
       {/* Center: device viewport */}
       <div className="flex flex-col items-center justify-between overflow-hidden bg-black/40 p-6">
-        {!isRunning ? (
+        {session.status === "STOPPED" || session.status === "FAILED" ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <Square className="h-10 w-10 text-muted-foreground" />
+            <p className="text-sm font-medium">{session.status === "FAILED" ? "Session failed" : "Session stopped"}</p>
+            {session.errorMessage && <p className="max-w-xs text-xs text-muted-foreground">{session.errorMessage}</p>}
+            <Link href="/sessions" className="mt-2 text-xs text-primary underline">
+              Back to sessions
+            </Link>
+          </div>
+        ) : !isRunning ? (
           <SessionProgress step={progress.step} label={progress.label} percent={progress.progressPercent} message={progress.message ?? session.errorMessage ?? undefined} />
         ) : (
           <div className="flex flex-1 items-center justify-center">
@@ -217,6 +250,8 @@ export default function SessionDetailPage() {
           <LogsPanel sessionId={sessionId} live={isRunning} streamingToken={session.streamingToken} />
         </div>
       </div>
+
+      <DeleteSessionDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} onConfirm={deleteSession} />
     </div>
   );
 }

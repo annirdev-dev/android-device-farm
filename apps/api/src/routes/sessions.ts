@@ -150,6 +150,22 @@ export async function sessionsRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  app.delete("/api/sessions/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    const session = await prisma.session.findUnique({ where: { id } });
+    if (!session) throw new NotFoundError("Session");
+    if (!req.user!.isPlatformAdmin) await requireOrgMembership(req, session.organizationId);
+    if (session.status !== "STOPPED" && session.status !== "FAILED") {
+      throw new ConflictError("Stop the session before deleting it");
+    }
+
+    await prisma.session.delete({ where: { id } });
+    await prisma.auditLog.create({
+      data: { organizationId: session.organizationId, actorUserId: req.user!.userId, action: "session.deleted", targetType: "session", targetId: id },
+    });
+    return { ok: true };
+  });
+
   app.post("/api/sessions/:id/restart", async (req) => {
     const { id } = req.params as { id: string };
     const { instanceId, baseUrl } = await loadRunningInstanceContext(id, req.user!.userId, req.user!.isPlatformAdmin);

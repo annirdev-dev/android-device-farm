@@ -19,13 +19,18 @@ export async function instancesRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true, provider: getEmulatorProvider().kind }));
 
   app.get("/capacity", async () => {
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const load = os.loadavg()[0] ?? 0;
-    const cpuCount = os.cpus().length;
+    const totalMemMb = os.totalmem() / (1024 * 1024);
+    const totalCpuMillicores = os.cpus().length * 1000;
+    // Report usage as "what this worker has committed to its own tracked
+    // instances", not raw OS-wide memory/CPU pressure. os.freemem()/loadavg()
+    // reflect the whole machine - every browser tab, IDE, and other app the
+    // user has open - which has nothing to do with whether another emulator
+    // actually fits, and made the scheduler refuse capacity that was really
+    // free just because the host was busy with unrelated work.
+    const { ramMb, cpuMillicores } = instanceManager.allocatedResources();
     return {
-      cpuUsagePercent: Math.min(100, (load / Math.max(1, cpuCount)) * 100),
-      ramUsagePercent: ((totalMem - freeMem) / totalMem) * 100,
+      cpuUsagePercent: Math.min(100, (cpuMillicores / totalCpuMillicores) * 100),
+      ramUsagePercent: Math.min(100, (ramMb / totalMemMb) * 100),
       runningInstanceCount: instanceManager.count(),
       provider: getEmulatorProvider().kind,
     };

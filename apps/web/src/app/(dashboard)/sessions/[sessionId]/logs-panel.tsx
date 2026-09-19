@@ -35,15 +35,29 @@ export function LogsPanel({ sessionId, live, streamingToken }: { sessionId: stri
     ws.onmessage = (event) => {
       try {
         const line = JSON.parse(event.data);
-        const row: LogRow = {
-          id: crypto.randomUUID(),
-          sessionId,
-          source: line.source,
-          level: line.level,
-          tag: line.tag,
-          message: line.message,
-          createdAt: line.timestamp ?? new Date().toISOString(),
-        };
+        // The gateway multiplexes connection-level notices (auth failure,
+        // upstream drop) over this same socket - render those as a real
+        // error line instead of a blank/garbled log row.
+        const row: LogRow =
+          line.type === "error"
+            ? {
+                id: crypto.randomUUID(),
+                sessionId,
+                source: "SYSTEM",
+                level: "ERROR",
+                tag: "connection",
+                message: line.message ?? "Stream connection error",
+                createdAt: new Date().toISOString(),
+              }
+            : {
+                id: crypto.randomUUID(),
+                sessionId,
+                source: line.source,
+                level: line.level,
+                tag: line.tag,
+                message: line.message,
+                createdAt: line.timestamp ?? new Date().toISOString(),
+              };
         if (paused) {
           bufferRef.current.push(row);
         } else {

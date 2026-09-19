@@ -37,15 +37,28 @@ export async function authorizeSessionStream(sessionId: string, token: string | 
   return { sessionId, instanceId: session.emulatorInstance.id, upstreamBase: base };
 }
 
+// How often an open stream/logcat connection counts as "the user is still
+// here", independent of whether they're actively tapping the device. Must
+// stay comfortably under SESSION_ABANDONED_TIMEOUT_MINUTES (default 10min)
+// - otherwise the reaper kills sessions that are being watched, not touched.
+const VIEWER_HEARTBEAT_MS = 60_000;
+
 /** Pipes a browser WebSocket to/from the emulator-worker's per-instance stream socket. */
 export function proxyStream(client: ServerWebSocket, auth: AuthorizedSession, path: "stream" | "logcat"): void {
   const upstreamUrl = `${toWsUrl(auth.upstreamBase)}/instances/${auth.instanceId}/${path}`;
   const upstream: ClientWebSocket = new WebSocket(upstreamUrl);
 
+  // Just having the stream or logcat socket open means someone is watching
+  // this session, even if they never tap/swipe. Without this, the reaper's
+  // idle-abandonment check (based solely on lastActivityAt) kills sessions
+  // out from under viewers who are only watching, not interacting.
+  touchActivity(auth.sessionId, true);
+  const heartbeat = setInterval(() => touchActivity(auth.sessionId, true), VIEWER_HEARTBEAT_MS);
+
   upstream.on("open", () => {
     client.on("message", (data, isBinary) => {
       if (upstream.readyState === WebSocket.OPEN) upstream.send(data as Buffer, { binary: isBinary });
-      if (!isBinary) touchActivity(auth.sessionId);
+      if (!isBinary) touchActivity(auth.sessionId, false);
     });
   });
 
@@ -56,11 +69,12 @@ export function proxyStream(client: ServerWebSocket, auth: AuthorizedSession, pa
 
   upstream.on("close", () => client.close());
   upstream.on("error", (err) => {
-    client.send(JSON.stringify({ type: "error", message: `Upstream error: ${err.message}` }));
+    client.send(JSON.stringify({ type: "error", message: `Upstream error: ${err.message || "connection lost"}` }));
     client.close();
   });
 
   const cleanup = () => {
+    clearInterval(heartbeat);
     upstream.close();
     if (path === "logcat") {
       const timer = flushTimers.get(auth.sessionId);
@@ -76,10 +90,12 @@ export function proxyStream(client: ServerWebSocket, auth: AuthorizedSession, pa
 }
 
 const lastTouch = new Map<string, number>();
-function touchActivity(sessionId: string): void {
+function touchActivity(sessionId: string, isHeartbeat: boolean): void {
   const now = Date.now();
   const last = lastTouch.get(sessionId) ?? 0;
-  if (now - last < 5000) return; // throttle DB writes to at most once per 5s per session
+  // Input events are throttled to once per 5s; heartbeat calls already run
+  // on their own longer interval, so let them through unconditionally.
+  if (!isHeartbeat && now - last < 5000) return;
   lastTouch.set(sessionId, now);
   prisma.session.update({ where: { id: sessionId }, data: { lastActivityAt: new Date() } }).catch(() => undefined);
 }

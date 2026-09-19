@@ -48,6 +48,24 @@ class InstanceManager {
     return this.instances.size;
   }
 
+  /**
+   * Sums the resource budget this worker has actually committed to its
+   * tracked instances (booting or running). Used for the /capacity endpoint
+   * instead of raw OS-wide memory/CPU pressure, which on a shared dev
+   * machine reflects every other app the user has open (browser, IDE, etc.)
+   * and has nothing to do with whether another emulator fits.
+   */
+  allocatedResources(): { ramMb: number; cpuMillicores: number } {
+    let ramMb = 0;
+    let cpuMillicores = 0;
+    for (const instance of this.instances.values()) {
+      if (instance.status === "STOPPING" || instance.status === "STOPPED" || instance.status === "FAILED") continue;
+      ramMb += instance.spec.resourceLimits.ramMb;
+      cpuMillicores += instance.spec.resourceLimits.cpuMillicores;
+    }
+    return { ramMb, cpuMillicores };
+  }
+
   async createInstance(spec: EmulatorLaunchSpec): Promise<ManagedInstance> {
     const provider = getEmulatorProvider();
     const managed: ManagedInstance = {
