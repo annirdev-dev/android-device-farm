@@ -40,6 +40,13 @@ async function loadRunningInstanceContext(sessionId: string, userId: string, isP
   return { session, instanceId: session.emulatorInstance.id, baseUrl };
 }
 
+// Prisma's BigInt (AppVersion.fileSizeBytes) isn't JSON-serializable -
+// stringify it wherever a session's nested appVersion is returned.
+function serializeSession<T extends { appVersion?: { fileSizeBytes: bigint } | null }>(session: T) {
+  if (!session.appVersion) return session;
+  return { ...session, appVersion: { ...session.appVersion, fileSizeBytes: session.appVersion.fileSizeBytes.toString() } };
+}
+
 async function callWorker(baseUrl: string, path: string, init?: RequestInit) {
   const res = await fetch(`${baseUrl}${path}`, { ...init, headers: { "content-type": "application/json", ...init?.headers } });
   if (!res.ok) throw new Error(`Worker call failed (${res.status}): ${await res.text()}`);
@@ -69,7 +76,7 @@ export async function sessionsRoutes(app: FastifyInstance) {
       }),
       prisma.session.count({ where }),
     ]);
-    return paginate(items, total, query);
+    return paginate(items.map(serializeSession), total, query);
   });
 
   app.post("/api/sessions", async (req, reply) => {
@@ -130,7 +137,7 @@ export async function sessionsRoutes(app: FastifyInstance) {
       const orgIds = await userOrgIds(req.user!.userId);
       if (!orgIds.includes(session.organizationId)) throw new ForbiddenError();
     }
-    return { session };
+    return { session: serializeSession(session) };
   });
 
   app.post("/api/sessions/:id/stop", async (req) => {
