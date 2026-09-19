@@ -16,7 +16,7 @@ services:
     plan: free
     region: oregon
     image:
-      url: minio/minio:latest
+      url: quay.io/minio/minio:latest
     dockerCommand: server /data --console-address :9001
     healthCheckPath: /minio/health/live
     envVars:
