@@ -3,8 +3,14 @@
 // and soft-deletion (deleted_at) where records must be reversibly removed.
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/client"
+  provider      = "prisma-client-js"
+  output        = "../generated/client"
+  // "native" covers local dev on any host OS; debian-openssl-3.0.x is
+  // pinned explicitly for node:20-bookworm-slim (our Docker base image),
+  // since Prisma's auto-detection inside a slim image without OpenSSL
+  // pre-installed at generate time can otherwise guess the wrong OpenSSL
+  // version and fail to load the engine at runtime.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
