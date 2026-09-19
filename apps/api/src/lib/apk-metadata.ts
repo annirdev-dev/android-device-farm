@@ -38,14 +38,18 @@ export async function parseApkMetadata(buffer: Buffer): Promise<ApkMetadata> {
     const parser = new ApkParser(tmpPath);
     const result = await parser.parse();
 
-    const manifest = result.manifest ?? {};
-    const versionCode = Number(manifest.versionCode ?? manifest["android:versionCode"]);
-    const usesSdk = manifest.usesSdk ?? {};
+    // app-info-parser puts manifest fields directly on the result object
+    // (result.package, result.versionCode, ...), not nested under a
+    // "manifest" key - confirmed against a real APK (io.appium.android.apis).
+    const versionCode = Number(result.versionCode);
+    const usesSdk = result.usesSdk ?? {};
+    const rawLabel = result.application?.label;
+    const appName = Array.isArray(rawLabel) ? rawLabel[0] : rawLabel;
 
     return {
-      packageName: String(manifest.package ?? ""),
-      appName: typeof result.application?.label === "string" ? result.application.label : undefined,
-      versionName: manifest.versionName ? String(manifest.versionName) : undefined,
+      packageName: String(result.package ?? ""),
+      appName: typeof appName === "string" ? appName : undefined,
+      versionName: result.versionName ? String(result.versionName) : undefined,
       versionCode: Number.isFinite(versionCode) ? versionCode : undefined,
       minSdkVersion: usesSdk.minSdkVersion ? Number(usesSdk.minSdkVersion) : undefined,
       targetSdkVersion: usesSdk.targetSdkVersion ? Number(usesSdk.targetSdkVersion) : undefined,
