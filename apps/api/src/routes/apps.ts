@@ -17,7 +17,9 @@ export async function appsRoutes(app: FastifyInstance) {
       include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
       orderBy: { createdAt: "desc" },
     });
-    return { apps };
+    // Prisma's BigInt (fileSizeBytes) isn't JSON-serializable - stringify it,
+    // same as the /app-versions routes already do.
+    return { apps: apps.map((a) => ({ ...a, versions: a.versions.map((v) => ({ ...v, fileSizeBytes: v.fileSizeBytes.toString() })) })) };
   });
 
   app.get("/api/apps/:id", async (req) => {
@@ -28,7 +30,7 @@ export async function appsRoutes(app: FastifyInstance) {
     });
     if (!appRow || appRow.deletedAt) throw new NotFoundError("App");
     await requireOrgMembership(req, appRow.project.organizationId);
-    return { app: appRow };
+    return { app: { ...appRow, versions: appRow.versions.map((v) => ({ ...v, fileSizeBytes: v.fileSizeBytes.toString() })) } };
   });
 
   app.delete("/api/apps/:id", async (req) => {
