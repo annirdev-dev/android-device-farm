@@ -16,7 +16,7 @@ const LEVEL_COLOR: Record<string, string> = {
   FATAL: "text-destructive",
 };
 
-export function LogsPanel({ sessionId, live }: { sessionId: string; live: boolean }) {
+export function LogsPanel({ sessionId, live, streamingToken }: { sessionId: string; live: boolean; streamingToken?: string | null }) {
   const [lines, setLines] = React.useState<LogRow[]>([]);
   const [paused, setPaused] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -30,8 +30,8 @@ export function LogsPanel({ sessionId, live }: { sessionId: string; live: boolea
   }, [sessionId]);
 
   React.useEffect(() => {
-    if (!live) return;
-    const ws = new WebSocket(`${STREAMING_GATEWAY_URL}/sessions/${sessionId}/logcat`);
+    if (!live || !streamingToken) return;
+    const ws = new WebSocket(`${STREAMING_GATEWAY_URL}/sessions/${sessionId}/logcat?token=${streamingToken}`);
     ws.onmessage = (event) => {
       try {
         const line = JSON.parse(event.data);
@@ -54,7 +54,7 @@ export function LogsPanel({ sessionId, live }: { sessionId: string; live: boolea
       }
     };
     return () => ws.close();
-  }, [sessionId, live, paused]);
+  }, [sessionId, live, paused, streamingToken]);
 
   React.useEffect(() => {
     if (!paused && bufferRef.current.length > 0) {

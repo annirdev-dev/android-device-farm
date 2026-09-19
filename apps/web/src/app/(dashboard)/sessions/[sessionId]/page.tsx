@@ -214,7 +214,7 @@ export default function SessionDetailPage() {
           <InfoRow label="CPU (host)" value="live via Admin > Compute Hosts" />
         </div>
         <div className="flex-1 overflow-hidden">
-          <LogsPanel sessionId={sessionId} live={isRunning} />
+          <LogsPanel sessionId={sessionId} live={isRunning} streamingToken={session.streamingToken} />
         </div>
       </div>
     </div>
