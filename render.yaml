@@ -17,7 +17,7 @@ services:
     region: oregon
     image:
       url: quay.io/minio/minio:latest
-    dockerCommand: server /data --console-address :9001
+    dockerCommand: minio server /data --console-address :9001
     healthCheckPath: /minio/health/live
     envVars:
       - key: PORT
